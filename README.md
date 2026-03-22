@@ -1,4 +1,4 @@
-# WOW Calendar
+# WoW Calendar
 
 Weekly calendar PWA with local-first storage (IndexedDB) and Google Calendar two-way sync.
 

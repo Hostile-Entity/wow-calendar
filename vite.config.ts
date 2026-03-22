@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react'
 
 const packageJsonPath = resolve(dirname(fileURLToPath(import.meta.url)), 'package.json')
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as { version?: string }
-const appVersion = packageJson.version ?? '0.2.0'
+const appVersion = packageJson.version ?? '0.3.0'
 const repoName = 'wow-calendar'
 const isGithubPagesBuild = process.env.NODE_ENV === 'production'
 

@@ -62,6 +62,20 @@ export function EventModal({
   const [error, setError] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const titleInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (!open || editMode) {
+      return
+    }
+
+    const id = window.requestAnimationFrame(() => {
+      titleInputRef.current?.focus()
+      titleInputRef.current?.select()
+    })
+
+    return () => window.cancelAnimationFrame(id)
+  }, [editMode, open])
 
   useEffect(() => {
     if (!menuOpen) {
@@ -172,6 +186,7 @@ export function EventModal({
         </div>
 
         <input
+          ref={titleInputRef}
           className="event-title-input"
           value={formValues.title}
           onChange={(event) => setFormValues({ ...formValues, title: event.target.value })}

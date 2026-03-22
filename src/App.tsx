@@ -79,7 +79,7 @@ function App() {
     useEvents()
   const { isReady, isConnected, ensureAccessToken, authenticate, disconnect, error, profile } =
     useGoogleAuth()
-  const [currentWeek, setCurrentWeek] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const [currentWeek, setCurrentWeek] = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }))
   const [slotHeight, setSlotHeight] = useState(DEFAULT_SLOT_HEIGHT)
   const [calendarDefaultColorHex, setCalendarDefaultColorHex] = useState<string | undefined>(undefined)
   const [theme, setTheme] = useState<'light' | 'dark'>(initialTheme)
@@ -341,7 +341,7 @@ function App() {
         </div>
 
         <div className="top-bar-actions">
-          <button type="button" onClick={() => setCurrentWeek(startOfWeek(new Date(), { weekStartsOn: 1 }))}>
+          <button type="button" onClick={() => setCurrentWeek(startOfWeek(new Date(), { weekStartsOn: 0 }))}>
             Today
           </button>
         </div>

@@ -1,6 +1,6 @@
 {
-  "name": "WOW Calendar",
-  "short_name": "WOWCal",
+  "name": "WoW Calendar",
+  "short_name": "WoWCal",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#eef2f6",
