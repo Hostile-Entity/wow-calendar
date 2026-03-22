@@ -15,7 +15,19 @@ const ZOOM_META_KEY = 'calendar:zoom'
 const GOOGLE_PRIMARY_COLOR_META_KEY = 'google:primaryColorHex'
 const DEBUG_MODE_META_KEY = 'app:debugMode'
 const AUTO_SYNC_META_KEY = 'app:autoSync'
+const THEME_META_KEY = 'app:theme'
+const THEME_LOCAL_STORAGE_KEY = 'wow-calendar-theme'
 const DEFAULT_SLOT_HEIGHT = 16
+
+function initialTheme(): 'light' | 'dark' {
+  const stored = localStorage.getItem(THEME_LOCAL_STORAGE_KEY)
+  if (stored === 'light' || stored === 'dark') {
+    return stored
+  }
+
+  const domTheme = document.documentElement.dataset.theme
+  return domTheme === 'dark' ? 'dark' : 'light'
+}
 
 function toLocalInputValue(iso: string): string {
   const date = new Date(iso)
@@ -70,10 +82,12 @@ function App() {
   const [currentWeek, setCurrentWeek] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
   const [slotHeight, setSlotHeight] = useState(DEFAULT_SLOT_HEIGHT)
   const [calendarDefaultColorHex, setCalendarDefaultColorHex] = useState<string | undefined>(undefined)
+  const [theme, setTheme] = useState<'light' | 'dark'>(initialTheme)
   const [autoSync, setAutoSync] = useState(false)
   const [debugMode, setDebugMode] = useState(false)
   const [debugReady, setDebugReady] = useState(false)
   const [autoSyncReady, setAutoSyncReady] = useState(false)
+  const [themeReady, setThemeReady] = useState(false)
   const [zoomReady, setZoomReady] = useState(false)
   const [eventModalOpen, setEventModalOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
@@ -111,6 +125,14 @@ function App() {
         }
       })
       .finally(() => setAutoSyncReady(true))
+
+    void getMeta<'light' | 'dark'>(THEME_META_KEY)
+      .then((storedTheme) => {
+        if (storedTheme === 'light' || storedTheme === 'dark') {
+          setTheme(storedTheme)
+        }
+      })
+      .finally(() => setThemeReady(true))
   }, [])
 
   useEffect(() => {
@@ -133,6 +155,18 @@ function App() {
     }
     void setMeta(AUTO_SYNC_META_KEY, autoSync)
   }, [autoSync, autoSyncReady])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem(THEME_LOCAL_STORAGE_KEY, theme)
+  }, [theme])
+
+  useEffect(() => {
+    if (!themeReady) {
+      return
+    }
+    void setMeta(THEME_META_KEY, theme)
+  }, [theme, themeReady])
 
   useEffect(() => {
     if (!isConnected || calendarDefaultColorHex) {
@@ -314,6 +348,8 @@ function App() {
 
         <div className="top-bar-right">
           <SettingsMenu
+            theme={theme}
+            onThemeChange={setTheme}
             autoSync={autoSync}
             onAutoSyncChange={setAutoSync}
             debugMode={debugMode}

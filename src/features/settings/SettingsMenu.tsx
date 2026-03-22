@@ -1,6 +1,8 @@
 import { useState } from 'react'
 
 interface SettingsMenuProps {
+  theme: 'light' | 'dark'
+  onThemeChange: (theme: 'light' | 'dark') => void
   autoSync: boolean
   onAutoSyncChange: (enabled: boolean) => void
   debugMode: boolean
@@ -8,6 +10,8 @@ interface SettingsMenuProps {
 }
 
 export function SettingsMenu({
+  theme,
+  onThemeChange,
   autoSync,
   onAutoSyncChange,
   debugMode,
@@ -33,6 +37,17 @@ export function SettingsMenu({
             aria-label="Settings panel"
             onClick={(event) => event.stopPropagation()}
           >
+            <label className="settings-row">
+              <span>Theme</span>
+              <select
+                value={theme}
+                onChange={(event) => onThemeChange(event.target.value as 'light' | 'dark')}
+              >
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+
             <label className="settings-row">
               <span>Auto sync</span>
               <input

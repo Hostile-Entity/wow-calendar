@@ -2,6 +2,35 @@ import { useEffect, useRef, useState } from 'react'
 import { getEventColors } from './googleColors'
 import type { EventColorId } from '../../lib/types/events'
 
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => hour.toString().padStart(2, '0'))
+const MINUTE_OPTIONS = ['00', '15', '30', '45'] as const
+
+function normalizeQuarterMinute(minute: string): string {
+  const numericMinute = Number(minute)
+  if (!Number.isFinite(numericMinute)) {
+    return '00'
+  }
+
+  const bounded = Math.max(0, Math.min(59, numericMinute))
+  const rounded = Math.round(bounded / 15) * 15
+  return `${rounded % 60}`.padStart(2, '0')
+}
+
+function parseLocalDateTime(value: string): { date: string; hour: string; minute: string } {
+  const [datePart, timePart = '00:00'] = value.split('T')
+  const [hourPart = '00', minutePart = '00'] = timePart.split(':')
+
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : new Date().toISOString().slice(0, 10)
+  const hour = HOUR_OPTIONS.includes(hourPart.padStart(2, '0')) ? hourPart.padStart(2, '0') : '00'
+  const minute = normalizeQuarterMinute(minutePart)
+
+  return { date, hour, minute }
+}
+
+function composeLocalDateTime(date: string, hour: string, minute: string): string {
+  return `${date}T${hour}:${minute}`
+}
+
 export interface EventFormValues {
   title: string
   description: string
@@ -54,6 +83,25 @@ export function EventModal({
 
   if (!open || !formValues) {
     return null
+  }
+
+  const startParts = parseLocalDateTime(formValues.start)
+  const endParts = parseLocalDateTime(formValues.end)
+
+  const updateDateTimePart = (
+    field: 'start' | 'end',
+    nextParts: Partial<{ date: string; hour: string; minute: string }>,
+  ) => {
+    const baseParts = parseLocalDateTime(formValues[field])
+    const merged = {
+      ...baseParts,
+      ...nextParts,
+    }
+
+    setFormValues({
+      ...formValues,
+      [field]: composeLocalDateTime(merged.date, merged.hour, merged.minute),
+    })
   }
 
   const handleSave = () => {
@@ -134,21 +182,69 @@ export function EventModal({
         <div className="time-row">
           <label>
             Start
-            <input
-              type="datetime-local"
-              step={900}
-              value={formValues.start}
-              onChange={(event) => setFormValues({ ...formValues, start: event.target.value })}
-            />
+            <div className="date-time-grid">
+              <input
+                type="date"
+                value={startParts.date}
+                onChange={(event) => updateDateTimePart('start', { date: event.target.value })}
+              />
+              <div className="time-selects">
+                <select
+                  value={startParts.hour}
+                  onChange={(event) => updateDateTimePart('start', { hour: event.target.value })}
+                >
+                  {HOUR_OPTIONS.map((hour) => (
+                    <option key={`start-hour-${hour}`} value={hour}>
+                      {hour}
+                    </option>
+                  ))}
+                </select>
+                <span>:</span>
+                <select
+                  value={startParts.minute}
+                  onChange={(event) => updateDateTimePart('start', { minute: event.target.value })}
+                >
+                  {MINUTE_OPTIONS.map((minute) => (
+                    <option key={`start-minute-${minute}`} value={minute}>
+                      {minute}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </label>
           <label>
             End
-            <input
-              type="datetime-local"
-              step={900}
-              value={formValues.end}
-              onChange={(event) => setFormValues({ ...formValues, end: event.target.value })}
-            />
+            <div className="date-time-grid">
+              <input
+                type="date"
+                value={endParts.date}
+                onChange={(event) => updateDateTimePart('end', { date: event.target.value })}
+              />
+              <div className="time-selects">
+                <select
+                  value={endParts.hour}
+                  onChange={(event) => updateDateTimePart('end', { hour: event.target.value })}
+                >
+                  {HOUR_OPTIONS.map((hour) => (
+                    <option key={`end-hour-${hour}`} value={hour}>
+                      {hour}
+                    </option>
+                  ))}
+                </select>
+                <span>:</span>
+                <select
+                  value={endParts.minute}
+                  onChange={(event) => updateDateTimePart('end', { minute: event.target.value })}
+                >
+                  {MINUTE_OPTIONS.map((minute) => (
+                    <option key={`end-minute-${minute}`} value={minute}>
+                      {minute}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </label>
         </div>
 

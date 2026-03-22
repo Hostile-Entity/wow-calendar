@@ -41,3 +41,18 @@ npm run dev
 - Sync pushes pending create/update/delete operations to Google `primary` calendar.
 - If outbound changes are high, app prompts for confirmation before push.
 - After push, app pulls remote events and merges updates back locally.
+
+## Deploy to GitHub Pages
+
+This project is configured for project-pages deployment at `/wow-calendar/`.
+
+```bash
+npm run deploy
+```
+
+This will:
+
+1. Build the app (`predeploy`).
+2. Publish `dist` to the `gh-pages` branch.
+
+After first deploy, set GitHub repository Pages source to `gh-pages` branch (root).

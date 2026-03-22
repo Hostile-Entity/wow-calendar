@@ -211,7 +211,11 @@ export function WeekCalendar({
               }}
             >
               {Array.from({ length: TOTAL_SLOTS }, (_, slot) => (
-                <span key={slot} className="time-slot-line" style={{ top: slot * slotHeight }} />
+                <span
+                  key={slot}
+                  className={`time-slot-line ${slot % 4 === 0 ? 'hour-line' : ''}`}
+                  style={{ top: slot * slotHeight }}
+                />
               ))}
 
               {(() => {
@@ -253,8 +257,8 @@ export function WeekCalendar({
                       style={{
                         top: (startMinute / SLOT_MINUTES) * slotHeight,
                         height: Math.max(1, eventHeight - 1),
-                        left: overlapsEarlier ? '50%' : '0.08rem',
-                        right: '0.08rem',
+                        left: overlapsEarlier ? '50%' : '0',
+                        right: '0',
                         background: colorHexById(event.colorId, event.calendarDefaultColorHex ?? calendarDefaultColorHex),
                         zIndex: overlapsEarlier ? 2 : 1,
                       }}
