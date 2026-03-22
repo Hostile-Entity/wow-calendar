@@ -1,5 +1,5 @@
 import { addDays, addWeeks, differenceInMinutes, format, startOfDay } from 'date-fns'
-import { useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type TouchEvent as ReactTouchEvent } from 'react'
 import { colorHexById } from '../events/googleColors'
 import type { CalendarEvent } from '../../lib/types/events'
 
@@ -99,6 +99,10 @@ export function WeekCalendar({
   }, [])
 
   const dayHeight = TOTAL_SLOTS * slotHeight
+  const calendarGridStyle = {
+    height: dayHeight,
+    '--slot-height': `${slotHeight}px`,
+  } as CSSProperties
 
   const startSlide = (direction: -1 | 1) => {
     if (slideAnimating) {
@@ -260,7 +264,7 @@ export function WeekCalendar({
               : undefined
           }
         >
-          <div className="calendar-grid" style={{ height: dayHeight }}>
+          <div className="calendar-grid" style={calendarGridStyle}>
             <div className="time-column">
               {Array.from({ length: 23 }, (_, index) => {
                 const hour = index + 1
@@ -294,14 +298,6 @@ export function WeekCalendar({
                     : undefined
                 }
               >
-                {Array.from({ length: TOTAL_SLOTS }, (_, slot) => (
-                  <span
-                    key={slot}
-                    className={`time-slot-line ${slot % 4 === 0 ? 'hour-line' : ''}`}
-                    style={{ top: slot * slotHeight }}
-                  />
-                ))}
-
                 {(() => {
                   const dayStart = startOfDay(day)
                   const dayEnd = addDays(dayStart, 1)

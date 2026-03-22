@@ -16,6 +16,7 @@
   --shadow: 0 15px 50px rgba(21, 50, 94, 0.12);
   --timebar-width: 3.1rem;
   --top-control-height: 2.05rem;
+  color-scheme: light;
 }
 
 :root[data-theme='dark'] {
@@ -32,6 +33,7 @@
   --brand-soft: #28384e;
   --danger: #ff8d8d;
   --shadow: 0 16px 52px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
 }
 
 * {
@@ -42,6 +44,7 @@ html,
 body,
 #root {
   height: 100%;
+  background: var(--bg);
 }
 
 body {
@@ -86,6 +89,7 @@ button:disabled {
   width: 100%;
   margin: 0;
   padding: 0;
+  background: var(--bg);
   height: 100vh;
   height: 100svh;
   display: grid;
@@ -444,22 +448,26 @@ h1 {
   padding: 0;
   margin: 0;
   position: relative;
-  background: var(--surface);
+  background-color: var(--surface);
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc((var(--slot-height, 16px) * 4) - 2px),
+      var(--grid-strong-line) calc((var(--slot-height, 16px) * 4) - 2px),
+      var(--grid-strong-line) calc(var(--slot-height, 16px) * 4)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(var(--slot-height, 16px) - 1px),
+      color-mix(in srgb, var(--line) 60%, transparent) calc(var(--slot-height, 16px) - 1px),
+      color-mix(in srgb, var(--line) 60%, transparent) var(--slot-height, 16px)
+    );
 }
 
 .day-column:last-child {
   border-right: 0;
-}
-
-.time-slot-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
-}
-
-.time-slot-line.hour-line {
-  border-top: 2px solid var(--grid-strong-line);
 }
 
 .calendar-event {
