@@ -1,5 +1,12 @@
-const CACHE_NAME = 'wow-calendar-v1'
-const ASSETS = ['/', '/index.html', '/manifest.webmanifest']
+const CACHE_NAME = 'wow-calendar-v2'
+
+function appPath(pathname) {
+  const scopeUrl = new URL(self.registration.scope)
+  return new URL(pathname, scopeUrl).toString()
+}
+
+const APP_SHELL_URL = appPath('./index.html')
+const ASSETS = [appPath('./'), APP_SHELL_URL, appPath('./manifest.webmanifest')]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)))
@@ -34,7 +41,7 @@ self.addEventListener('fetch', (event) => {
           void caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cloned))
           return response
         })
-        .catch(() => caches.match('/index.html'))
+        .catch(() => caches.match(APP_SHELL_URL))
     }),
   )
 })
