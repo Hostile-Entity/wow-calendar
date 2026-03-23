@@ -1,4 +1,4 @@
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
+import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { CalendarEvent } from '../types/events'
 
 interface WowCalendarDb extends DBSchema {
@@ -61,4 +61,13 @@ export async function getMeta<T>(key: string): Promise<T | undefined> {
 export async function setMeta(key: string, value: unknown): Promise<void> {
   const db = await getDb()
   await db.put('meta', { key, value })
+}
+
+export async function clearLocalDatabase(): Promise<void> {
+  if (dbPromise) {
+    const db = await dbPromise
+    db.close()
+    dbPromise = undefined
+  }
+  await deleteDB('wow-calendar')
 }

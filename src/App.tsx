@@ -1,15 +1,17 @@
-import { addMinutes, addWeeks, startOfWeek } from 'date-fns'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { addDays, addMinutes, addWeeks, format, startOfDay, startOfWeek } from 'date-fns'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { AccountMenu } from './features/auth/AccountMenu'
 import { useGoogleAuth } from './features/auth/useGoogleAuth'
 import { WeekCalendar } from './features/calendar/WeekCalendar'
 import { EventModal, type EventFormValues } from './features/events/EventModal'
 import { useEvents } from './features/events/useEvents'
+import { SearchView } from './features/search/SearchView'
 import { SettingsMenu } from './features/settings/SettingsMenu'
 import { fetchPrimaryCalendarColor, syncWithGoogleCalendar } from './features/sync/googleSync'
 import { SyncPanel } from './features/sync/SyncPanel'
-import { getAllEvents, getMeta, setMeta } from './lib/storage/db'
+import { clearLocalDatabase, getAllEvents, getMeta, setMeta } from './lib/storage/db'
 import type { CalendarEvent } from './lib/types/events'
+import searchIcon from './assets/icons/search.svg'
 
 const ZOOM_META_KEY = 'calendar:zoom'
 const GOOGLE_PRIMARY_COLOR_META_KEY = 'google:primaryColorHex'
@@ -77,7 +79,7 @@ function applyCalendarDefaultColorToEvents(
 function App() {
   const { allEvents, visibleEvents, loading, createEvent, updateEvent, softDeleteEvent, replaceAllEvents } =
     useEvents()
-  const { isReady, isConnected, ensureAccessToken, authenticate, disconnect, error, profile } =
+  const { isReady, isConnected, ensureAccessToken, authenticate, disconnect, clearLocalAuthData, error, profile } =
     useGoogleAuth()
   const [currentWeek, setCurrentWeek] = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }))
   const [slotHeight, setSlotHeight] = useState(DEFAULT_SLOT_HEIGHT)
@@ -92,8 +94,16 @@ function App() {
   const [eventModalOpen, setEventModalOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
   const [formValues, setFormValues] = useState<EventFormValues | null>(null)
+  const [jumpDateValue, setJumpDateValue] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [searchViewOpen, setSearchViewOpen] = useState(false)
+  const [searchInputValue, setSearchInputValue] = useState('')
+  const [submittedSearchQuery, setSubmittedSearchQuery] = useState('')
+  const [focusTimestamp, setFocusTimestamp] = useState<number | null>(null)
   const autoSyncBootstrapRef = useRef(false)
   const syncInFlightRef = useRef(false)
+  const saveInFlightRef = useRef(false)
+  const dateJumpInputRef = useRef<HTMLInputElement | null>(null)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     void getMeta<number>(ZOOM_META_KEY)
@@ -205,6 +215,17 @@ function App() {
     [allEvents],
   )
 
+  const calendarRenderWindowEvents = useMemo(() => {
+    const windowStart = startOfDay(addWeeks(currentWeek, -1))
+    const windowEndExclusive = startOfDay(addWeeks(currentWeek, 2))
+
+    return visibleEvents.filter((event) => {
+      const eventStart = new Date(event.start)
+      const eventEnd = new Date(event.end)
+      return eventEnd > windowStart && eventStart < windowEndExclusive
+    })
+  }, [currentWeek, visibleEvents])
+
   const handleGoogleSync = useCallback(async () => {
     if (!isConnected || syncInFlightRef.current) {
       return
@@ -260,14 +281,14 @@ function App() {
     }
   }
 
-  const handleCreateAt = (start: Date) => {
+  const handleCreateAt = useCallback((start: Date) => {
     const end = addMinutes(start, 30)
     setEditingEvent(null)
     setFormValues(buildFormValues(start, end))
     setEventModalOpen(true)
-  }
+  }, [])
 
-  const handleEditEvent = (event: CalendarEvent) => {
+  const handleEditEvent = useCallback((event: CalendarEvent) => {
     setEditingEvent(event)
     setFormValues({
       title: event.title,
@@ -277,45 +298,52 @@ function App() {
       colorId: event.colorId,
     })
     setEventModalOpen(true)
-  }
+  }, [])
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setEventModalOpen(false)
     setEditingEvent(null)
     setFormValues(null)
-  }
+  }, [])
 
-  const handleSubmitEvent = async (values: EventFormValues) => {
-    if (editingEvent) {
-      await updateEvent({
-        ...editingEvent,
-        title: values.title,
-        description: values.description,
-        colorId: values.colorId,
-        start: fromLocalInputValue(values.start),
-        end: fromLocalInputValue(values.end),
-      })
-      closeModal()
-      if (autoSync) {
-        void handleGoogleSync()
-      }
+  const handleSubmitEvent = useCallback(async (values: EventFormValues) => {
+    if (saveInFlightRef.current) {
       return
     }
 
-    await createEvent({
-      title: values.title,
-      description: values.description,
-      colorId: values.colorId,
-      start: fromLocalInputValue(values.start),
-      end: fromLocalInputValue(values.end),
-    })
+    saveInFlightRef.current = true
+    const eventToUpdate = editingEvent
     closeModal()
-    if (autoSync) {
-      void handleGoogleSync()
-    }
-  }
 
-  const handleDelete = async () => {
+    try {
+      if (eventToUpdate) {
+        await updateEvent({
+          ...eventToUpdate,
+          title: values.title,
+          description: values.description,
+          colorId: values.colorId,
+          start: fromLocalInputValue(values.start),
+          end: fromLocalInputValue(values.end),
+        })
+      } else {
+        await createEvent({
+          title: values.title,
+          description: values.description,
+          colorId: values.colorId,
+          start: fromLocalInputValue(values.start),
+          end: fromLocalInputValue(values.end),
+        })
+      }
+
+      if (autoSync) {
+        void handleGoogleSync()
+      }
+    } finally {
+      saveInFlightRef.current = false
+    }
+  }, [autoSync, closeModal, createEvent, editingEvent, handleGoogleSync, updateEvent])
+
+  const handleDelete = useCallback(async () => {
     if (!editingEvent) {
       return
     }
@@ -324,29 +352,166 @@ function App() {
     if (autoSync) {
       void handleGoogleSync()
     }
-  }
+  }, [autoSync, editingEvent, handleGoogleSync, softDeleteEvent, closeModal])
+
+  const handleNavigateWeek = useCallback((direction: -1 | 1) => {
+    setCurrentWeek((date) => addWeeks(date, direction))
+  }, [])
+
+  const currentWeekMonthLabel = useMemo(() => format(addDays(currentWeek, 3), 'MMM yyyy'), [currentWeek])
+  const todayDateLabel = format(new Date(), 'd')
+
+  const handleJumpToToday = useCallback(() => {
+    const now = new Date()
+    setCurrentWeek(startOfWeek(now, { weekStartsOn: 0 }))
+    setJumpDateValue(format(now, 'yyyy-MM-dd'))
+    setFocusTimestamp(now.getTime())
+  }, [])
+
+  const handleOpenDatePicker = useCallback(() => {
+    const input = dateJumpInputRef.current
+    if (!input) {
+      return
+    }
+
+    setJumpDateValue(format(addDays(currentWeek, 3), 'yyyy-MM-dd'))
+
+    const inputWithPicker = input as HTMLInputElement & { showPicker?: () => void }
+    if (typeof inputWithPicker.showPicker === 'function') {
+      inputWithPicker.showPicker()
+      return
+    }
+
+    input.click()
+  }, [currentWeek])
+
+  const handleJumpDateSelect = useCallback((nextDateValue: string) => {
+    if (!nextDateValue) {
+      return
+    }
+
+    const selectedDate = new Date(`${nextDateValue}T12:00:00`)
+    if (Number.isNaN(selectedDate.getTime())) {
+      return
+    }
+
+    setJumpDateValue(nextDateValue)
+    setCurrentWeek(startOfWeek(selectedDate, { weekStartsOn: 0 }))
+  }, [])
+
+  const handleClearLocalData = useCallback(async () => {
+    const keysToRemove: string[] = []
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index)
+      if (!key) {
+        continue
+      }
+      if (key.startsWith('wow-calendar') || key === THEME_LOCAL_STORAGE_KEY) {
+        keysToRemove.push(key)
+      }
+    }
+
+    await clearLocalDatabase()
+    clearLocalAuthData()
+    for (const key of keysToRemove) {
+      localStorage.removeItem(key)
+    }
+
+    window.location.reload()
+  }, [clearLocalAuthData])
+
+  const openSearchView = useCallback(() => {
+    setSearchViewOpen(true)
+  }, [])
+
+  const closeSearchView = useCallback(() => {
+    setSearchViewOpen(false)
+  }, [])
+
+  const handleSearchSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      setSubmittedSearchQuery(searchInputValue.trim())
+    },
+    [searchInputValue],
+  )
+
+  useEffect(() => {
+    if (!searchViewOpen) {
+      return
+    }
+    searchInputRef.current?.focus()
+    searchInputRef.current?.select()
+  }, [searchViewOpen])
+
+  const handleSelectSearchEvent = useCallback((event: CalendarEvent) => {
+    const startDate = new Date(event.start)
+    if (Number.isNaN(startDate.getTime())) {
+      return
+    }
+
+    setCurrentWeek(startOfWeek(startDate, { weekStartsOn: 0 }))
+    setFocusTimestamp(startDate.getTime())
+    setSearchViewOpen(false)
+  }, [])
 
   return (
     <main className="app-shell">
-      <header className="top-bar">
-        <div className="top-bar-left">
-          <AccountMenu
-            isReady={isReady}
-            isConnected={isConnected}
-            profile={profile}
-            authError={error}
-            onAuthenticate={handleAuthenticate}
-            onDisconnect={disconnect}
-          />
-        </div>
-
-        <div className="top-bar-actions">
-          <button type="button" onClick={() => setCurrentWeek(startOfWeek(new Date(), { weekStartsOn: 0 }))}>
-            Today
+      {searchViewOpen ? (
+        <header className="top-bar top-bar-search">
+          <button type="button" className="search-back-button" onClick={closeSearchView} aria-label="Back to calendar">
+            ←
           </button>
-        </div>
+          <form className="search-header-form" onSubmit={handleSearchSubmit}>
+            <input
+              ref={searchInputRef}
+              className="search-header-input"
+              value={searchInputValue}
+              onChange={(event) => setSearchInputValue(event.target.value)}
+              placeholder="Search events"
+            />
+          </form>
+        </header>
+      ) : (
+        <header className="top-bar">
+          <div className="top-bar-left">
+            <div className="top-bar-left-controls">
+              <AccountMenu
+                isReady={isReady}
+                isConnected={isConnected}
+                profile={profile}
+                authError={error}
+                onAuthenticate={handleAuthenticate}
+                onDisconnect={disconnect}
+              />
 
-        <div className="top-bar-right">
+              <div className="date-jump">
+                <button type="button" className="date-jump-button" onClick={handleOpenDatePicker}>
+                  {currentWeekMonthLabel}
+                </button>
+                <input
+                  ref={dateJumpInputRef}
+                  className="date-jump-native-input"
+                  type="date"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  value={jumpDateValue}
+                  onChange={(jumpEvent) => handleJumpDateSelect(jumpEvent.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="top-bar-actions">
+            <button type="button" className="search-button" onClick={openSearchView} aria-label="Search events">
+              <img src={searchIcon} alt="" aria-hidden="true" />
+            </button>
+            <button type="button" className="today-date-button" onClick={handleJumpToToday} aria-label="Go to today">
+              {todayDateLabel}
+            </button>
+          </div>
+
+          <div className="top-bar-right">
           <SettingsMenu
             theme={theme}
             onThemeChange={setTheme}
@@ -354,11 +519,13 @@ function App() {
             onAutoSyncChange={setAutoSync}
             debugMode={debugMode}
             onDebugModeChange={setDebugMode}
+            onClearLocalData={handleClearLocalData}
           />
-        </div>
-      </header>
+          </div>
+        </header>
+      )}
 
-      {debugMode && (
+      {!searchViewOpen && debugMode && (
         <SyncPanel
           pendingEvents={pendingEvents}
           isConnected={isConnected}
@@ -367,18 +534,21 @@ function App() {
         />
       )}
 
-      {loading ? (
+      {searchViewOpen ? (
+        <SearchView events={visibleEvents} query={submittedSearchQuery} onSelectEvent={handleSelectSearchEvent} />
+      ) : loading ? (
         <section className="week-calendar loading-state">Loading local calendar...</section>
       ) : (
         <WeekCalendar
           weekStart={currentWeek}
-          events={visibleEvents}
+          events={calendarRenderWindowEvents}
           slotHeight={slotHeight}
+          focusTimestamp={focusTimestamp}
           calendarDefaultColorHex={calendarDefaultColorHex}
           onSlotHeightChange={setSlotHeight}
           onCreateAt={handleCreateAt}
           onEditEvent={handleEditEvent}
-          onNavigateWeek={(direction) => setCurrentWeek((date) => addWeeks(date, direction))}
+          onNavigateWeek={handleNavigateWeek}
         />
       )}
 

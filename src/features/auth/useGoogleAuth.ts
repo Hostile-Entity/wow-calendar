@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 const GOOGLE_SCRIPT_ID = 'google-identity-services'
 const GOOGLE_TOKEN_KEY = 'wow-calendar-google-token'
 const GOOGLE_PROFILE_KEY = 'wow-calendar-google-profile'
+const GOOGLE_LINKED_KEY = 'wow-calendar-google-linked'
 const GOOGLE_SCOPES = [
   'openid',
   'profile',
@@ -76,6 +77,18 @@ function clearStoredProfile(): void {
   localStorage.removeItem(GOOGLE_PROFILE_KEY)
 }
 
+function readLinkedFlag(): boolean {
+  return localStorage.getItem(GOOGLE_LINKED_KEY) === '1'
+}
+
+function storeLinkedFlag(): void {
+  localStorage.setItem(GOOGLE_LINKED_KEY, '1')
+}
+
+function clearLinkedFlag(): void {
+  localStorage.removeItem(GOOGLE_LINKED_KEY)
+}
+
 async function fetchGoogleProfile(accessToken: string): Promise<GoogleProfile | null> {
   const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
     headers: {
@@ -93,10 +106,15 @@ async function fetchGoogleProfile(accessToken: string): Promise<GoogleProfile | 
 
 export function useGoogleAuth() {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
+  const initialStoredToken = readStoredToken()
   const [scriptLoaded, setScriptLoaded] = useState(() => Boolean(window.google?.accounts?.oauth2))
   const [error, setError] = useState<string | null>(null)
-  const [accessToken, setAccessToken] = useState<string | null>(() => readStoredToken()?.accessToken ?? null)
+  const [accessToken, setAccessToken] = useState<string | null>(() => initialStoredToken?.accessToken ?? null)
+  const [tokenExpiresAt, setTokenExpiresAt] = useState<number | null>(() => initialStoredToken?.expiresAt ?? null)
   const [profile, setProfile] = useState<GoogleProfile | null>(() => readStoredProfile())
+  const [isLinked, setIsLinked] = useState(
+    () => Boolean(initialStoredToken?.accessToken) || Boolean(readStoredProfile()) || readLinkedFlag(),
+  )
 
   const tokenClientRef = useRef<google.accounts.oauth2.TokenClient | null>(null)
 
@@ -169,27 +187,43 @@ export function useGoogleAuth() {
     async (prompt: '' | 'select_account'): Promise<string> => {
       const tokenClient = getTokenClient()
 
-      const token = await new Promise<google.accounts.oauth2.TokenResponse>((resolve, reject) => {
-        tokenClient.callback = (response) => {
-          if (response.error) {
-            reject(new Error(response.error))
-            return
+      try {
+        const token = await new Promise<google.accounts.oauth2.TokenResponse>((resolve, reject) => {
+          tokenClient.callback = (response) => {
+            if (response.error) {
+              reject(new Error(response.error))
+              return
+            }
+            resolve(response)
           }
-          resolve(response)
+
+          tokenClient.requestAccessToken({ prompt })
+        })
+
+        if (!token.access_token) {
+          throw new Error('Google did not return an access token.')
         }
 
-        tokenClient.requestAccessToken({ prompt })
-      })
-
-      if (!token.access_token) {
-        throw new Error('Google did not return an access token.')
+        const expiresInSeconds = Number(token.expires_in ?? 3600)
+        const nextExpiresAt = Date.now() + Math.max(0, expiresInSeconds - 30) * 1000
+        const nextToken = token.access_token
+        storeToken(nextToken, expiresInSeconds)
+        storeLinkedFlag()
+        setAccessToken(nextToken)
+        setTokenExpiresAt(nextExpiresAt)
+        setIsLinked(true)
+        setError(null)
+        return nextToken
+      } catch (requestError) {
+        if (requestError instanceof Error && requestError.message === 'interaction_required') {
+          setError(null)
+        } else if (requestError instanceof Error) {
+          setError(requestError.message)
+        } else {
+          setError('Google authentication failed.')
+        }
+        throw requestError
       }
-
-      const nextToken = token.access_token
-      storeToken(nextToken, Number(token.expires_in ?? 3600))
-      setAccessToken(nextToken)
-      setError(null)
-      return nextToken
     },
     [getTokenClient],
   )
@@ -212,10 +246,42 @@ export function useGoogleAuth() {
     const stored = readStoredToken()
     if (stored) {
       setAccessToken(stored.accessToken)
+      setTokenExpiresAt(stored.expiresAt)
+      setIsLinked(true)
       return stored.accessToken
     }
+
+    setAccessToken(null)
+    setTokenExpiresAt(null)
     return requestToken('')
   }, [requestToken])
+
+  useEffect(() => {
+    if (!isLinked) {
+      return
+    }
+
+    void ensureAccessToken().catch(() => {
+      return
+    })
+  }, [ensureAccessToken, isLinked])
+
+  useEffect(() => {
+    if (!isLinked || !tokenExpiresAt) {
+      return
+    }
+
+    const renewInMs = Math.max(5000, tokenExpiresAt - Date.now() - 120000)
+    const timeoutId = window.setTimeout(() => {
+      void requestToken('').catch(() => {
+        return
+      })
+    }, renewInMs)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [isLinked, requestToken, tokenExpiresAt])
 
   const disconnect = useCallback(() => {
     if (accessToken && window.google?.accounts?.oauth2) {
@@ -223,17 +289,32 @@ export function useGoogleAuth() {
     }
     clearStoredToken()
     clearStoredProfile()
+    clearLinkedFlag()
     setAccessToken(null)
+    setTokenExpiresAt(null)
     setProfile(null)
+    setIsLinked(false)
   }, [accessToken])
+
+  const clearLocalAuthData = useCallback(() => {
+    clearStoredToken()
+    clearStoredProfile()
+    clearLinkedFlag()
+    setAccessToken(null)
+    setTokenExpiresAt(null)
+    setProfile(null)
+    setIsLinked(false)
+    setError(null)
+  }, [])
 
   return {
     isReady: scriptLoaded,
     error,
-    isConnected: Boolean(accessToken),
+    isConnected: isLinked,
     profile,
     authenticate,
     ensureAccessToken,
     disconnect,
+    clearLocalAuthData,
   }
 }

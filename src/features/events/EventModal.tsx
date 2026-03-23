@@ -61,8 +61,17 @@ export function EventModal({
   const [formValues, setFormValues] = useState<EventFormValues | null>(initialValues)
   const [error, setError] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const isSubmittingRef = useRef(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const titleInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (!open) {
+      isSubmittingRef.current = false
+      setIsSubmitting(false)
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open || editMode) {
@@ -118,7 +127,7 @@ export function EventModal({
     })
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formValues.title.trim()) {
       setError('Event name is required.')
       return
@@ -130,14 +139,35 @@ export function EventModal({
     }
 
     setError(null)
-    void onSave({
-      ...formValues,
-      title: formValues.title.trim(),
-    })
+    if (isSubmittingRef.current) {
+      return
+    }
+
+    isSubmittingRef.current = true
+    setIsSubmitting(true)
+
+    try {
+      await onSave({
+        ...formValues,
+        title: formValues.title.trim(),
+      })
+    } catch {
+      setError('Could not save event. Try again.')
+      isSubmittingRef.current = false
+      setIsSubmitting(false)
+    }
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={() => {
+        if (!isSubmitting) {
+          onClose()
+        }
+      }}
+    >
       <section
         className="event-modal"
         role="dialog"
@@ -146,13 +176,19 @@ export function EventModal({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="modal-top-actions">
-          <button type="button" className="modal-top-button" onClick={onClose} aria-label="Close event editor">
+          <button
+            type="button"
+            className="modal-top-button"
+            onClick={onClose}
+            aria-label="Close event editor"
+            disabled={isSubmitting}
+          >
             x
           </button>
 
           <div className="modal-top-right">
-            <button type="button" className="primary modal-top-button" onClick={handleSave}>
-              {editMode ? 'Save' : 'Create event'}
+            <button type="button" className="primary modal-top-button" onClick={() => void handleSave()} disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : editMode ? 'Save' : 'Create event'}
             </button>
 
             {editMode && onDelete && (
@@ -162,6 +198,7 @@ export function EventModal({
                   className="menu-button modal-top-button"
                   aria-label="Open event actions"
                   onClick={() => setMenuOpen((state) => !state)}
+                  disabled={isSubmitting}
                 >
                   ...
                 </button>
@@ -172,9 +209,13 @@ export function EventModal({
                       type="button"
                       className="danger"
                       onClick={() => {
+                        if (isSubmitting) {
+                          return
+                        }
                         setMenuOpen(false)
                         void onDelete()
                       }}
+                      disabled={isSubmitting}
                     >
                       Delete
                     </button>

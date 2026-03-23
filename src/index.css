@@ -12,8 +12,10 @@
   --grid-strong-line: #c2ccdc;
   --brand: #205d9d;
   --brand-soft: #e2edf9;
+  --now-line: #d14a4a;
   --danger: #b92f2f;
   --shadow: 0 15px 50px rgba(21, 50, 94, 0.12);
+  --icon-filter: none;
   --timebar-width: 3.1rem;
   --top-control-height: 2.05rem;
   color-scheme: light;
@@ -31,8 +33,10 @@
   --grid-strong-line: #31425d;
   --brand: #4f8cd5;
   --brand-soft: #28384e;
+  --now-line: #ffffff;
   --danger: #ff8d8d;
   --shadow: 0 16px 52px rgba(0, 0, 0, 0.55);
+  --icon-filter: invert(1) saturate(0) brightness(1.7);
   color-scheme: dark;
 }
 
@@ -113,7 +117,7 @@ button:disabled {
 }
 
 .top-bar {
-  padding: 0 0.35rem;
+  padding: 0.18rem 0.5rem;
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
@@ -134,11 +138,38 @@ h1 {
 .top-bar-actions {
   display: flex;
   gap: 0.5rem;
-  justify-content: center;
+  justify-content: flex-end;
 }
 
 .top-bar-left {
   justify-self: start;
+}
+
+.top-bar-left-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.date-jump {
+  position: relative;
+}
+
+.date-jump-button {
+  height: var(--top-control-height);
+  min-width: 6.4rem;
+  padding: 0 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.date-jump-native-input {
+  position: absolute;
+  inset: auto;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .top-bar-right {
@@ -229,9 +260,18 @@ h1 {
 
 .settings-button {
   height: var(--top-control-height);
-  padding: 0 0.56rem;
-  font-size: 0.74rem;
+  width: var(--top-control-height);
+  padding: 0;
+  display: grid;
+  place-items: center;
   border-radius: 8px;
+}
+
+.settings-button img {
+  width: 1rem;
+  height: 1rem;
+  display: block;
+  filter: var(--icon-filter);
 }
 
 .top-bar .top-bar-actions button {
@@ -239,6 +279,59 @@ h1 {
   padding-top: 0;
   padding-bottom: 0;
   font-size: 0.74rem;
+}
+
+.search-button {
+  width: var(--top-control-height);
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.today-date-button {
+  width: var(--top-control-height);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.search-button img {
+  width: 1rem;
+  height: 1rem;
+  display: block;
+  filter: var(--icon-filter);
+}
+
+.top-bar-search {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.search-back-button {
+  height: var(--top-control-height);
+  width: var(--top-control-height);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.search-header-form {
+  min-width: 0;
+}
+
+.search-header-input {
+  width: 100%;
+  height: var(--top-control-height);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0 0.65rem;
 }
 
 .settings-popover {
@@ -258,6 +351,11 @@ h1 {
   justify-content: space-between;
   gap: 0.9rem;
   font-size: 0.92rem;
+}
+
+.settings-clear-button {
+  width: 100%;
+  margin-top: 0.55rem;
 }
 
 .settings-row input[type='checkbox'] {
@@ -351,9 +449,108 @@ h1 {
   color: var(--muted);
 }
 
+.search-view {
+  min-height: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.search-empty {
+  margin: 0;
+  padding: 1rem;
+  color: var(--muted);
+}
+
+.search-results-scroll {
+  height: 100%;
+  overflow: auto;
+  padding: 0.45rem;
+}
+
+.search-year-separator {
+  margin: 0.65rem 0 0.38rem;
+  padding: 0 0.3rem;
+  font-size: 0.82rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.search-result-item {
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0.42rem;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  margin-bottom: 0.36rem;
+}
+
+.search-result-item.is-closest {
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 28%, transparent);
+}
+
+.search-result-date {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  padding: 0.3rem 0.15rem;
+}
+
+.search-result-month {
+  font-size: 0.62rem;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.search-result-day {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.search-result-event {
+  border: 1px solid #000;
+  border-radius: 10px;
+  padding: 0.46rem 0.58rem;
+  color: #fff;
+  min-width: 0;
+}
+
+.search-result-title {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.search-result-time {
+  margin: 0.08rem 0 0;
+  font-size: 0.74rem;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.search-end-note {
+  margin: 0.56rem 0.2rem 0.36rem;
+  font-size: 0.74rem;
+  color: var(--muted);
+  text-align: center;
+}
+
 .day-header-grid {
   display: grid;
   grid-template-columns: var(--timebar-width) repeat(7, minmax(0, 1fr));
+  padding-right: var(--calendar-scrollbar-width, 0px);
   border-bottom: 1px solid var(--line);
   background: var(--card);
 }
@@ -373,6 +570,14 @@ h1 {
   padding: 0.62rem 0.2rem 0.3rem;
   text-align: center;
   border-right: 2px solid var(--grid-strong-line);
+}
+
+.day-header-cell.is-today {
+  background: color-mix(in srgb, var(--brand-soft) 72%, var(--card));
+}
+
+.day-header-cell.is-today strong {
+  color: var(--brand);
 }
 
 .day-header-cell:last-child {
@@ -468,6 +673,29 @@ h1 {
 
 .day-column:last-child {
   border-right: 0;
+}
+
+.now-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--now-line);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.now-line::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--now-line);
+  transform: translateY(-50%);
 }
 
 .calendar-event {
@@ -682,6 +910,14 @@ legend {
 
   .top-bar {
     grid-template-columns: auto 1fr auto;
+  }
+
+  .top-bar-left-controls {
+    gap: 0.3rem;
+  }
+
+  .date-jump-button {
+    padding: 0 0.52rem;
   }
 
   .sync-panel {

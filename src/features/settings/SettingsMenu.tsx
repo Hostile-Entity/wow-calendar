@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import gearIcon from '../../assets/icons/gear.svg'
 
 interface SettingsMenuProps {
   theme: 'light' | 'dark'
@@ -7,6 +8,7 @@ interface SettingsMenuProps {
   onAutoSyncChange: (enabled: boolean) => void
   debugMode: boolean
   onDebugModeChange: (enabled: boolean) => void
+  onClearLocalData: () => Promise<void>
 }
 
 export function SettingsMenu({
@@ -16,8 +18,10 @@ export function SettingsMenu({
   onAutoSyncChange,
   debugMode,
   onDebugModeChange,
+  onClearLocalData,
 }: SettingsMenuProps) {
   const [open, setOpen] = useState(false)
+  const [isClearing, setIsClearing] = useState(false)
 
   return (
     <div className="settings-menu">
@@ -27,7 +31,7 @@ export function SettingsMenu({
         aria-label="Open settings"
         onClick={() => setOpen((state) => !state)}
       >
-        Settings
+        <img src={gearIcon} alt="" aria-hidden="true" />
       </button>
 
       {open && (
@@ -64,6 +68,25 @@ export function SettingsMenu({
                 onChange={(event) => onDebugModeChange(event.target.checked)}
               />
             </label>
+
+            <button
+              type="button"
+              className="danger settings-clear-button"
+              disabled={isClearing}
+              onClick={() => {
+                const confirmed = window.confirm(
+                  'Clear all local data? This removes local events, settings, and stored account session from this browser only.',
+                )
+                if (!confirmed) {
+                  return
+                }
+
+                setIsClearing(true)
+                void onClearLocalData().finally(() => setIsClearing(false))
+              }}
+            >
+              {isClearing ? 'Clearing...' : 'Clear all local data'}
+            </button>
 
             <p className="settings-version">Version {__APP_VERSION__}</p>
           </section>

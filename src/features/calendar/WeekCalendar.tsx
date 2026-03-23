@@ -1,5 +1,5 @@
-import { addDays, addWeeks, differenceInMinutes, format, startOfDay } from 'date-fns'
-import { useEffect, useRef, useState, type CSSProperties, type TouchEvent as ReactTouchEvent } from 'react'
+import { addDays, addWeeks, differenceInMinutes, format, isToday, startOfDay } from 'date-fns'
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type TouchEvent as ReactTouchEvent } from 'react'
 import { colorHexById } from '../events/googleColors'
 import type { CalendarEvent } from '../../lib/types/events'
 
@@ -16,6 +16,7 @@ interface WeekCalendarProps {
   weekStart: Date
   events: CalendarEvent[]
   slotHeight: number
+  focusTimestamp?: number | null
   calendarDefaultColorHex?: string
   onSlotHeightChange: (nextHeight: number) => void
   onCreateAt: (date: Date) => void
@@ -32,6 +33,11 @@ interface SwipeSnapshot {
   x: number
   y: number
   time: number
+}
+
+interface DayBucket {
+  timed: CalendarEvent[]
+  allDay: CalendarEvent[]
 }
 
 function clampSlotHeight(value: number): number {
@@ -51,10 +57,11 @@ function toSlotMinute(value: number): number {
   return Math.max(0, Math.min(TOTAL_MINUTES_PER_DAY - SLOT_MINUTES, Math.floor(value / SLOT_MINUTES) * SLOT_MINUTES))
 }
 
-export function WeekCalendar({
+function WeekCalendarComponent({
   weekStart,
   events,
   slotHeight,
+  focusTimestamp,
   calendarDefaultColorHex,
   onSlotHeightChange,
   onCreateAt,
@@ -65,9 +72,14 @@ export function WeekCalendar({
   const swipeRef = useRef<SwipeSnapshot | null>(null)
   const suppressClickRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const prevScrollRef = useRef<HTMLDivElement | null>(null)
+  const nextScrollRef = useRef<HTMLDivElement | null>(null)
   const pendingSlideRef = useRef<-1 | 1 | null>(null)
+  const initialNowScrollDoneRef = useRef(false)
   const [slideOffset, setSlideOffset] = useState(CENTER_TRACK_OFFSET)
   const [slideAnimating, setSlideAnimating] = useState(false)
+  const [scrollbarWidth, setScrollbarWidth] = useState(0)
+  const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
     const element = scrollRef.current
@@ -98,47 +110,182 @@ export function WeekCalendar({
     }
   }, [])
 
+  useEffect(() => {
+    const element = scrollRef.current
+    if (!element) {
+      return
+    }
+
+    const updateScrollbarWidth = () => {
+      const width = Math.max(0, element.offsetWidth - element.clientWidth)
+      setScrollbarWidth((previous) => (previous === width ? previous : width))
+    }
+
+    updateScrollbarWidth()
+
+    const resizeObserver = new ResizeObserver(updateScrollbarWidth)
+    resizeObserver.observe(element)
+    window.addEventListener('resize', updateScrollbarWidth)
+
+    return () => {
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', updateScrollbarWidth)
+    }
+  }, [slotHeight])
+
+  useEffect(() => {
+    const element = scrollRef.current
+    if (!element || !focusTimestamp) {
+      return
+    }
+
+    const focusDate = new Date(focusTimestamp)
+    if (Number.isNaN(focusDate.getTime())) {
+      return
+    }
+
+    const minutesFromStart = focusDate.getHours() * 60 + focusDate.getMinutes()
+    const scrollTop = (minutesFromStart / SLOT_MINUTES) * slotHeight - element.clientHeight * 0.35
+    const maxScroll = Math.max(0, element.scrollHeight - element.clientHeight)
+    const targetScrollTop = Math.max(0, Math.min(maxScroll, scrollTop))
+    element.scrollTop = targetScrollTop
+    syncNeighborScroll(targetScrollTop)
+  }, [focusTimestamp, slotHeight, weekStart])
+
+  useEffect(() => {
+    const currentScrollTop = scrollRef.current?.scrollTop ?? 0
+    syncNeighborScroll(currentScrollTop)
+  }, [weekStart])
+
+  useEffect(() => {
+    const updateNow = () => setNow(new Date())
+    const intervalId = window.setInterval(updateNow, 15_000)
+    return () => window.clearInterval(intervalId)
+  }, [])
+
+  useEffect(() => {
+    if (initialNowScrollDoneRef.current || focusTimestamp) {
+      return
+    }
+
+    const element = scrollRef.current
+    if (!element) {
+      return
+    }
+
+    const weekStartDay = startOfDay(weekStart)
+    const weekEndDay = addDays(weekStartDay, 7)
+    const nowDate = new Date()
+    if (nowDate < weekStartDay || nowDate >= weekEndDay) {
+      initialNowScrollDoneRef.current = true
+      return
+    }
+
+    const minutesFromStart = nowDate.getHours() * 60 + nowDate.getMinutes()
+    const scrollTop = (minutesFromStart / SLOT_MINUTES) * slotHeight - element.clientHeight * 0.5
+    const maxScroll = Math.max(0, element.scrollHeight - element.clientHeight)
+    const targetScrollTop = Math.max(0, Math.min(maxScroll, scrollTop))
+    element.scrollTop = targetScrollTop
+    syncNeighborScroll(targetScrollTop)
+    initialNowScrollDoneRef.current = true
+  }, [focusTimestamp, slotHeight, weekStart])
+
   const dayHeight = TOTAL_SLOTS * slotHeight
   const calendarGridStyle = {
     height: dayHeight,
     '--slot-height': `${slotHeight}px`,
   } as CSSProperties
 
+  const syncNeighborScroll = (scrollTop: number) => {
+    const prev = prevScrollRef.current
+    const next = nextScrollRef.current
+
+    if (prev && Math.abs(prev.scrollTop - scrollTop) > 1) {
+      prev.scrollTop = scrollTop
+    }
+
+    if (next && Math.abs(next.scrollTop - scrollTop) > 1) {
+      next.scrollTop = scrollTop
+    }
+  }
+
+  const dayBucketsByKey = useMemo(() => {
+    const windowStart = startOfDay(addWeeks(weekStart, -1))
+    const dayBounds = Array.from({ length: 21 }, (_, index) => {
+      const start = addDays(windowStart, index)
+      const key = format(start, 'yyyy-MM-dd')
+      return {
+        key,
+        start,
+        end: addDays(start, 1),
+      }
+    })
+
+    const buckets = new Map<string, DayBucket>()
+    for (const dayBound of dayBounds) {
+      buckets.set(dayBound.key, { timed: [], allDay: [] })
+    }
+
+    for (const event of events) {
+      const eventStart = new Date(event.start)
+      const eventEnd = new Date(event.end)
+      if (!(eventEnd > eventStart)) {
+        continue
+      }
+
+      for (const dayBound of dayBounds) {
+        if (eventEnd <= dayBound.start || eventStart >= dayBound.end) {
+          continue
+        }
+
+        const bucket = buckets.get(dayBound.key)
+        if (!bucket) {
+          continue
+        }
+
+        if (event.allDay) {
+          bucket.allDay.push(event)
+        } else {
+          bucket.timed.push(event)
+        }
+      }
+    }
+
+    for (const bucket of buckets.values()) {
+      bucket.timed.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+    }
+
+    return buckets
+  }, [events, weekStart])
+
   const startSlide = (direction: -1 | 1) => {
     if (slideAnimating) {
       return
     }
+
+    syncNeighborScroll(scrollRef.current?.scrollTop ?? 0)
 
     pendingSlideRef.current = direction
     setSlideAnimating(true)
     setSlideOffset(direction > 0 ? NEXT_TRACK_OFFSET : PREV_TRACK_OFFSET)
   }
 
-  const renderWeekPane = (paneWeekStart: Date, interactive: boolean) => {
+  const renderWeekPane = (paneWeekStart: Date, panePosition: 'prev' | 'current' | 'next') => {
+    const interactive = panePosition === 'current'
     const days = Array.from({ length: 7 }, (_, index) => addDays(paneWeekStart, index))
 
     return (
       <>
         <div className="day-header-grid">
           <div className="time-cell">Time</div>
-          {days.map((day) => (
-            <div key={day.toISOString()} className="day-header-cell">
-              <p>{format(day, 'EEE')}</p>
-              <strong>{format(day, 'd')}</strong>
-              <div className="all-day-tabs">
-                {events
-                  .filter((event) => {
-                    if (!event.allDay) {
-                      return false
-                    }
-                    const dayStart = startOfDay(day)
-                    const dayEnd = addDays(dayStart, 1)
-                    const eventStart = new Date(event.start)
-                    const eventEnd = new Date(event.end)
-                    return eventEnd > dayStart && eventStart < dayEnd
-                  })
-                  .slice(0, 2)
-                  .map((event) => (
+          {days.map((day) => {
+            const dayBucket = dayBucketsByKey.get(format(day, 'yyyy-MM-dd'))
+            return (
+              <div key={day.toISOString()} className={`day-header-cell ${isToday(day) ? 'is-today' : ''}`}>
+                <p>{format(day, 'EEE')}</p>
+                <strong>{format(day, 'd')}</strong>
+                <div className="all-day-tabs">
+                  {(dayBucket?.allDay ?? []).slice(0, 2).map((event) => (
                     <button
                       key={`${event.id}-allday`}
                       type="button"
@@ -161,14 +308,24 @@ export function WeekCalendar({
                       {event.title}
                     </button>
                   ))}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <div
           className="calendar-scroll"
-          ref={interactive ? scrollRef : undefined}
+          ref={
+            panePosition === 'current' ? scrollRef : panePosition === 'prev' ? prevScrollRef : nextScrollRef
+          }
+          onScroll={
+            interactive
+              ? (event) => {
+                  syncNeighborScroll(event.currentTarget.scrollTop)
+                }
+              : undefined
+          }
           onWheel={
             interactive
               ? (event) => {
@@ -299,64 +456,70 @@ export function WeekCalendar({
                 }
               >
                 {(() => {
+                  const isCurrentDay = isToday(day)
+                  const dayBucket = dayBucketsByKey.get(format(day, 'yyyy-MM-dd'))
                   const dayStart = startOfDay(day)
                   const dayEnd = addDays(dayStart, 1)
+                  const nowLineTop =
+                    ((now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60) / SLOT_MINUTES) * slotHeight
 
-                  const dayEvents = events
-                    .filter((event) => {
-                      if (event.allDay) {
-                        return false
-                      }
-                      const eventStart = new Date(event.start)
-                      const eventEnd = new Date(event.end)
-                      return eventEnd > dayStart && eventStart < dayEnd
-                    })
-                    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+                  const dayEvents = dayBucket?.timed ?? []
 
-                  return dayEvents.map((event, index) => {
-                    const eventStart = new Date(event.start)
-                    const eventEnd = new Date(event.end)
+                  return (
+                    <>
+                      {isCurrentDay && (
+                        <span
+                          className="now-line"
+                          style={{ top: nowLineTop }}
+                          aria-hidden="true"
+                        />
+                      )}
+                      {dayEvents.map((event, index) => {
+                        const eventStart = new Date(event.start)
+                        const eventEnd = new Date(event.end)
 
-                    const displayStart = eventStart > dayStart ? eventStart : dayStart
-                    const displayEnd = eventEnd < dayEnd ? eventEnd : dayEnd
+                        const displayStart = eventStart > dayStart ? eventStart : dayStart
+                        const displayEnd = eventEnd < dayEnd ? eventEnd : dayEnd
 
-                    const startMinute = Math.max(0, differenceInMinutes(displayStart, dayStart))
-                    const durationMinutes = Math.max(SLOT_MINUTES, differenceInMinutes(displayEnd, displayStart))
-                    const eventHeight = Math.max(slotHeight, (durationMinutes / SLOT_MINUTES) * slotHeight)
+                        const startMinute = Math.max(0, differenceInMinutes(displayStart, dayStart))
+                        const durationMinutes = Math.max(SLOT_MINUTES, differenceInMinutes(displayEnd, displayStart))
+                        const eventHeight = Math.max(slotHeight, (durationMinutes / SLOT_MINUTES) * slotHeight)
 
-                    const overlapsEarlier = dayEvents.slice(0, index).some((previous) => {
-                      const previousStart = new Date(previous.start)
-                      const previousEnd = new Date(previous.end)
-                      return previousEnd > eventStart && previousStart < eventEnd
-                    })
+                        const overlapsEarlier = dayEvents.slice(0, index).some((previous) => {
+                          const previousStart = new Date(previous.start)
+                          const previousEnd = new Date(previous.end)
+                          return previousEnd > eventStart && previousStart < eventEnd
+                        })
 
-                    return (
-                      <span
-                        key={event.id}
-                        className="calendar-event"
-                        style={{
-                          top: (startMinute / SLOT_MINUTES) * slotHeight,
-                          height: Math.max(1, eventHeight - 1),
-                          left: overlapsEarlier ? '50%' : '0',
-                          right: '0',
-                          background: colorHexById(
-                            event.colorId,
-                            event.calendarDefaultColorHex ?? calendarDefaultColorHex,
-                          ),
-                          zIndex: overlapsEarlier ? 2 : 1,
-                        }}
-                        onClick={(clickEvent) => {
-                          if (!interactive) {
-                            return
-                          }
-                          clickEvent.stopPropagation()
-                          onEditEvent(event)
-                        }}
-                      >
-                        <span className="event-title">{event.title}</span>
-                      </span>
-                    )
-                  })
+                        return (
+                          <span
+                            key={event.id}
+                            className="calendar-event"
+                            style={{
+                              top: (startMinute / SLOT_MINUTES) * slotHeight,
+                              height: Math.max(1, eventHeight - 1),
+                              left: overlapsEarlier ? '50%' : '0',
+                              right: '0',
+                              background: colorHexById(
+                                event.colorId,
+                                event.calendarDefaultColorHex ?? calendarDefaultColorHex,
+                              ),
+                              zIndex: overlapsEarlier ? 2 : 1,
+                            }}
+                            onClick={(clickEvent) => {
+                              if (!interactive) {
+                                return
+                              }
+                              clickEvent.stopPropagation()
+                              onEditEvent(event)
+                            }}
+                          >
+                            <span className="event-title">{event.title}</span>
+                          </span>
+                        )
+                      })}
+                    </>
+                  )
                 })()}
               </div>
             ))}
@@ -367,7 +530,11 @@ export function WeekCalendar({
   }
 
   return (
-    <section className="week-calendar" aria-label="Weekly calendar">
+    <section
+      className="week-calendar"
+      aria-label="Weekly calendar"
+      style={{ '--calendar-scrollbar-width': `${scrollbarWidth}px` } as CSSProperties}
+    >
       <div
         className={`week-track ${slideAnimating ? 'animating' : ''}`}
         style={{ transform: `translateX(${slideOffset}%)` }}
@@ -384,13 +551,15 @@ export function WeekCalendar({
         }}
       >
         <div className="week-page" aria-hidden={slideOffset !== CENTER_TRACK_OFFSET}>
-          {renderWeekPane(addWeeks(weekStart, -1), false)}
+          {renderWeekPane(addWeeks(weekStart, -1), 'prev')}
         </div>
-        <div className="week-page">{renderWeekPane(weekStart, true)}</div>
+        <div className="week-page">{renderWeekPane(weekStart, 'current')}</div>
         <div className="week-page" aria-hidden={slideOffset !== CENTER_TRACK_OFFSET}>
-          {renderWeekPane(addWeeks(weekStart, 1), false)}
+          {renderWeekPane(addWeeks(weekStart, 1), 'next')}
         </div>
       </div>
     </section>
   )
 }
+
+export const WeekCalendar = memo(WeekCalendarComponent)
